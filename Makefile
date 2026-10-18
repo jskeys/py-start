@@ -1,0 +1,83 @@
+build_dir=./build
+
+py_dir=${CURDIR}
+py_src_dir=$(py_dir)/src
+py_test_dir=$(py_dir)/test
+py_dist=$(build_dir)/dist
+py_version=$(py_src_dir)/version.py
+
+py_src=$(shell find $(py_src_dir) -name "*.py")
+py_test=$(shell find $(py_test_dir) -name "*.py")
+run_format := python3 -m ruff format --line-length 100 -v
+
+all:
+	@echo $(py_dir)
+	@echo $(py_src)
+
+.PHONY: dist
+dist: $(build_dir)/.dist | $(build_dir)
+$(build_dir)/.dist: $(py_src) pyproject.toml
+	uv build -o $(build_dir)
+	touch $@
+
+.PHONY: check
+check: isort-check format-check lint typecheck
+
+.PHONY: format
+format: $(build_dir)/.format
+$(build_dir)/.format: $(py_src) $(py_test) | $(build_dir)
+	$(run_format) $^
+	touch $@
+
+.PHONY: format-check
+format-check: $(build_dir)/.format-check
+$(build_dir)/.format-check: $(py_src) $(py_test) | $(build_dir)
+	$(run_format) --check  $^
+	touch $@
+
+.PHONY: typecheck
+typecheck: $(build_dir)/.typecheck
+$(build_dir)/.typecheck: $(py_src) | $(build_dir)
+	ty check $(py_dir)/src
+	touch $@
+
+.PHONY: install
+install: $(build_dir)/.install
+$(build_dir)/.install: $(py_dir)/pyproject.toml $(py_src) | $(build_dir)
+	uv pip install -e $(py_dir)[dev,apps]
+	touch $@
+
+.PHONY: lint
+lint: $(build_dir)/.lint
+$(build_dir)/.lint: $(py_src) .flake8 | $(build_dir)
+	python3 -m flake8 -v --tee --output-file $(build_dir)/flake.log --color never --config .flake8 $(py_src)
+	touch $@
+
+.PHONY: isort
+isort: $(build_dir)/.isort
+$(build_dir)/.isort: $(py_src) $(py_test) .isort.cfg | $(build_dir)
+	isort $(py_src) $(py_test)
+	touch $@
+
+.PHONY: isort-check
+isort-check: $(build_dir)/.isort-check
+$(build_dir)/.isort-check: $(py_src) $(py_test) .isort.cfg | $(build_dir)
+	isort --check $(py_src) $(py_test)
+	touch $@
+
+.PHONY: test
+test: $(build_dir)/.test
+$(build_dir)/.test: $(py_src) $(py_test) | $(build_dir)
+	pytest -v
+	touch $@
+
+venv:
+	uv venv --clear
+
+$(build_dir):
+	mkdir -p $(build_dir)
+
+.PHONY: clean
+clean:
+	rm -rf $(py_dist) $(build_dir) $(py_version)
+	rm -rf .mypy_cache
